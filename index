@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Registro de horas | Prefácio</title>
+<style>
+  :root {
+    --escuro: #3c3c3c; --claro: #fbe5d9; --acento: #c8572f;
+    --ok: #2e7d32; --erro: #c62828; --borda: #e2ddd9; --texto: #2b2b2b; --suave: #6b6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f6f3f1; color: var(--texto);
+         font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 15px; }
+  header { background: var(--escuro); color: #fff; padding: 14px 16px; }
+  header .marca { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+  header h1 { margin: 2px 0 0; font-size: 18px; font-weight: 600; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+  .ola { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  .mes { color: var(--suave); margin: 0; }
+  .aviso { border-radius: 6px; padding: 10px 12px; margin-top: 12px; font-size: 14px; }
+  .aviso.info { background: var(--claro); }
+  .aviso.alerta { background: #fff3cd; }
+  .aviso.erro { background: #fdecea; color: var(--erro); }
+  .linha { display: grid; grid-template-columns: 1fr 92px 36px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  select, input[type=number] { width: 100%; padding: 10px; font-size: 15px; border: 1px solid var(--borda);
+                               border-radius: 6px; background: #fff; color: var(--texto); }
+  .pct { position: relative; }
+  .pct input { padding-right: 24px; text-align: right; }
+  .pct span { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--suave); }
+  .remover { border: 0; background: none; font-size: 20px; color: var(--suave); cursor: pointer; height: 40px; }
+  .remover:hover { color: var(--erro); }
+  .adicionar { border: 1px dashed var(--borda); background: none; width: 100%; padding: 10px; border-radius: 6px;
+               color: var(--acento); font-weight: 600; cursor: pointer; font-size: 14px; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px;
+           padding-top: 12px; border-top: 1px solid var(--borda); }
+  .total strong { font-size: 22px; }
+  .total.ok strong { color: var(--ok); }
+  .total.nok strong { color: var(--erro); }
+  .dica { font-size: 13px; color: var(--suave); }
+  .enviar { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; border: 0; border-radius: 6px;
+            background: var(--acento); color: #fff; cursor: pointer; }
+  .enviar:disabled { background: #cfc8c3; cursor: not-allowed; }
+  .secundario { background: none; color: var(--acento); border: 1px solid var(--acento); margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  td { padding: 8px 0; border-bottom: 1px solid var(--borda); }
+  td:last-child { text-align: right; font-weight: 600; }
+  .oculto { display: none; }
+  .check { font-size: 40px; color: var(--ok); line-height: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="marca">Prefácio Comunicação</div>
+  <h1>Registro de horas por cliente</h1>
+</header>
+<main id="app"></main>
+
+<script>
+// =====================================================================
+// CONFIGURAÇÃO: cole entre as aspas a URL do app do Apps Script
+// (a mesma da aba Config, linha "URL do app", terminada em /exec)
+// =====================================================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbwAwfogKAa82uWcc5t4l4g7aY2-GtLBDyvqjPGB1Euhl3P9V_-IlbIafO8ZAT0BMhCjIQ/exec';
+
+let D = {};
+const app = document.getElementById('app');
+let linhas = [];
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function fmt(n) { return String(Math.round(n * 10) / 10).replace('.', ','); }
+
+function inicio() {
+  if (D.erro) {
+    app.innerHTML = '<div class="card"><div class="aviso erro">' + esc(D.erro) + '</div></div>';
+    return;
+  }
+  if (D.situacao === 'fechado') {
+    app.innerHTML = cabecalho() + '<div class="card"><div class="aviso erro">O lançamento de ' +
+      esc(D.mes) + ' está encerrado. Procure o RH.</div></div>';
+    return;
+  }
+  linhas = D.linhas.length ? D.linhas.map(l => ({ codigo: l.codigo, pct: l.pct })) : [{ codigo: '', pct: '' }];
+  formulario();
+}
+
+function cabecalho() {
+  return '<div class="card"><p class="ola">Olá, ' + esc(D.nome.split(' ')[0]) + '.</p>' +
+         '<p class="mes">Mês de referência: <b>' + esc(D.mes) + '</b></p>' + avisos() + '</div>';
+}
+
+function avisos() {
+  let h = '<div class="aviso info">Se o trabalho com clientes não somou 100% do seu tempo no mês, lance a diferença em <b>Prefácio</b>. ' +
+    'Se precisar ultrapassar 100%, fale com o RH' + (D.contato ? ' (' + esc(D.contato) + ')' : '') + ' antes de enviar.</div>';
+  if (D.situacao === 'aberto') h += '<div class="aviso info">Prazo para envio: até <b>' + esc(D.prazo) + '</b>.</div>';
+  if (D.situacao === 'atrasado') h += '<div class="aviso alerta">O prazo terminou em ' + esc(D.prazo) +
+      '. Seu envio será registrado como fora do prazo.</div>';
+  if (D.ultimoEnvio) h += '<div class="aviso info">Você já enviou este mês em ' + esc(D.ultimoEnvio) +
+      '. Se reenviar, o novo registro substitui o anterior.</div>';
+  else if (D.origem === 'anterior') h += '<div class="aviso info">Carregamos os clientes do seu último registro. ' +
+      'Confira e ajuste o que mudou.</div>';
+  return h;
+}
+
+function formulario() {
+  app.innerHTML = cabecalho() +
+    '<div class="card"><p class="dica" style="margin-top:0">Informe o percentual do seu tempo dedicado a cada cliente no mês. A soma deve ser 100%.</p>' +
+    '<div id="linhas"></div>' +
+    '<button class="adicionar" onclick="adicionar()">+ Adicionar cliente</button>' +
+    '<div class="total" id="total"></div></div>' +
+    '<div id="msg"></div>' +
+    '<button class="enviar" id="btnEnviar" onclick="enviar()">Enviar registro</button>';
+  desenharLinhas();
+}
+
+function desenharLinhas() {
+  const usados = linhas.map(l => l.codigo);
+  document.getElementById('linhas').innerHTML = linhas.map((l, i) => {
+    const opcoes = '<option value="">Selecione o cliente</option>' + D.clientes.map(c =>
+      '<option value="' + esc(c.codigo) + '"' + (c.codigo === l.codigo ? ' selected' : '') +
+      (c.codigo !== l.codigo && usados.includes(c.codigo) ? ' disabled' : '') + '>' + esc(c.nome) + '</option>'
+    ).join('');
+    return '<div class="linha">' +
+      '<select onchange="mudarCliente(' + i + ', this.value)" aria-label="Cliente">' + opcoes + '</select>' +
+      '<div class="pct"><input type="number" inputmode="decimal" min="0" max="100" step="0.5" value="' +
+        (l.pct === '' ? '' : l.pct) + '" oninput="mudarPct(' + i + ', this.value)" aria-label="Percentual"><span>%</span></div>' +
+      '<button class="remover" onclick="remover(' + i + ')" title="Remover" aria-label="Remover">×</button></div>';
+  }).join('');
+  atualizarTotal();
+}
+
+function mudarCliente(i, v) { linhas[i].codigo = v; desenharLinhas(); }
+function mudarPct(i, v) { linhas[i].pct = v === '' ? '' : Number(v.replace(',', '.')); atualizarTotal(); }
+function adicionar() { linhas.push({ codigo: '', pct: '' }); desenharLinhas(); }
+function remover(i) {
+  linhas.splice(i, 1);
+  if (!linhas.length) linhas.push({ codigo: '', pct: '' });
+  desenharLinhas();
+}
+
+function problema() {
+  const total = Math.round(linhas.reduce((s, l) => s + (Number(l.pct) || 0), 0) * 10) / 10;
+  if (linhas.some(l => !l.codigo)) return { total, texto: 'Selecione o cliente em todas as linhas.' };
+  if (linhas.some(l => !(Number(l.pct) > 0 && Number(l.pct) <= 100))) return { total, texto: 'Informe um percentual entre 0 e 100 em todas as linhas.' };
+  if (Math.abs(total - 100) > 0.05) {
+    return { total, texto: total < 100
+      ? 'Faltam ' + fmt(100 - total) + '%. Complete com Prefácio.'
+      : 'Passou ' + fmt(total - 100) + '%. Para ultrapassar 100%, fale com o RH.' };
+  }
+  return { total, texto: '' };
+}
+
+function atualizarTotal() {
+  const p = problema();
+  const el = document.getElementById('total');
+  el.className = 'total ' + (p.texto ? 'nok' : 'ok');
+  el.innerHTML = '<span class="dica">' + (p.texto || 'Tudo certo.') + '</span><strong>' + fmt(p.total) + '%</strong>';
+  document.getElementById('btnEnviar').disabled = !!p.texto;
+}
+
+function enviar() {
+  const btn = document.getElementById('btnEnviar');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  document.getElementById('msg').innerHTML = '';
+  fetch(API_URL, {
+    method: 'POST',
+    credentials: 'omit',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ acao: 'salvar', token: D.token, linhas: linhas.map(l => ({ codigo: l.codigo, pct: Number(l.pct) })) })
+  })
+    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error(r.erro || 'Não foi possível enviar.');
+      concluido(r.resultado);
+    })
+    .catch(err => {
+      document.getElementById('msg').innerHTML = '<div class="card"><div class="aviso erro">' +
+        esc(err && err.message && err.message !== 'Failed to fetch' ? err.message
+            : 'Falha de conexão. Verifique sua internet e tente novamente.') + '</div></div>';
+      btn.textContent = 'Enviar registro'; atualizarTotal();
+    });
+}
+
+function concluido(r) {
+  D.linhas = r.resumo.map(x => ({ codigo: x.codigo, pct: x.pct }));
+  D.ultimoEnvio = 'agora';
+  app.innerHTML = '<div class="card" style="text-align:center"><div class="check">✓</div>' +
+    '<p class="ola">Registro enviado</p><p class="mes">' + esc(r.mes) + (r.fora ? ' (fora do prazo)' : '') + '</p></div>' +
+    '<div class="card"><table>' + r.resumo.map(x =>
+      '<tr><td>' + esc(x.cliente) + '</td><td>' + fmt(x.pct) + '%</td></tr>').join('') + '</table>' +
+    '<p class="dica">Você receberá a confirmação por e-mail. Se precisar corrigir, reenvie até o prazo; vale sempre o último envio.</p></div>' +
+    '<button class="enviar secundario" onclick="inicio()">Corrigir registro</button>';
+}
+
+function carregar() {
+  const id = new URLSearchParams(location.search).get('id') || '';
+  if (!id) { D = { erro: 'Link incompleto. Use o link pessoal enviado por e-mail.' }; inicio(); return; }
+  app.innerHTML = '<div class="card"><p class="mes">Carregando seus dados...</p></div>';
+  fetch(API_URL + '?api=dados&id=' + encodeURIComponent(id), { credentials: 'omit' })
+    .then(r => r.json())
+    .then(dados => { D = dados; inicio(); })
+    .catch(() => {
+      app.innerHTML = '<div class="card"><div class="aviso erro">Não foi possível carregar seus dados. ' +
+        'Verifique sua internet e recarregue a página.</div></div>';
+    });
+}
+
+carregar();
+</script>
+</body>
+</html>
